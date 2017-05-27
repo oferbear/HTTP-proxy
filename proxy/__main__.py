@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-
+## @package proxy.__main__
+# HTTP Proxy with management capebilities.
+#
 import argparse
 import cache
 import constants
@@ -19,9 +21,11 @@ PACKAGE_VERSION = '0.0.0'
 LOG_PREFIX = 'my'
 
 
+## Parse program argument.
+# @returns (dict) program arguments.
+#
 def parse_args():
-    ## Parse program argument.
-
+    ## Log level.
     LOG_STR_LEVELS = {
         'DEBUG': logging.DEBUG,
         'INFO': logging.INFO,
@@ -72,6 +76,9 @@ def parse_args():
     return args
 
 
+## Setup logging file.
+# @returns logging object
+#
 def setup_logging(stream=None, level=logging.INFO):
     logger = logging.getLogger(LOG_PREFIX)
     logger.propagate = False
@@ -98,11 +105,13 @@ def setup_logging(stream=None, level=logging.INFO):
     return logger
 
 
+## Closes all open sockets
 def close_all(poll):
     for p in poll._pollables:
         p.close_socket()
 
 
+## Main implementation.
 def main():
     application_context = {
         'statistics': {
@@ -118,8 +127,11 @@ def main():
     logger.debug('Args: %s', args)
 
     try:
+        # Create poll.
         poll = poller.Poller(logger)
+        # Create cache handler.
         cache_handler = cache.Cache(logger)
+        # Create proxy listener.
         proxy_listener = http_socket.HttpListen(
             args.bind_address,
             args.proxy_bind_port,
@@ -127,6 +139,7 @@ def main():
             application_context,
             logger,
         )
+        # Create server listener.
         server_listener = manage.ManageListen(
             args.bind_address,
             args.server_bind_port,
@@ -145,9 +158,9 @@ def main():
         print 'exit'
         close_all(poll)
         logger.info('All sockets closed, shutting down log')
-        # logger.shutdown()
 
 
+## Error used for handling disconnecting sockets.
 class Disconnect(RuntimeError):
     def __init__(self):
         super(Disconnect, self).__init__("Disconnect")

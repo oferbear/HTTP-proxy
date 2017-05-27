@@ -1,5 +1,9 @@
+## @package proxy.pollable
+# Module for Pollable object.
+#
 
 
+## Pollable interface.
 class Pollable(object):
     def on_read(self, poller, args):
         pass

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+## @package proxy.util
+# Module for util functions.
+#
 
+import constants
 import errno
 import socket
-
-from . import constants
 
 
 # python-3 woodo
@@ -16,41 +18,9 @@ except ImportError:
     urlparse = urllib.parse
 
 
-def spliturl(url):
-    return urlparse.urlsplit(url)
-
-
-def recv_line(
-    s,
-    buf,
-    max_length=constants.MAX_HEADER_LENGTH,
-    block_size=constants.BLOCK_SIZE,
-):
-    try:
-        while True:
-            # print "BUF "+buf
-            if len(buf) > max_length:
-                raise RuntimeError(
-                    'Exceeded maximum line length %s' % max_length
-                )
-            n = buf.find(constants.CRLF_BIN)
-            if n != -1:
-                break
-            t = s.recv(block_size)
-
-            if not t:
-                raise RuntimeError('Disconnect')
-            buf += t
-        # print "num"+str(n)
-        # print buf[:n].decode('utf-8'), buf[n + len(constants.CRLF_BIN):]
-        return buf[:n].decode('utf-8'), buf[n + len(constants.CRLF_BIN):]
-
-    except socket.error as e:
-        # print e.errno
-        if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
-            raise
-
-
+## Parse header line.
+# @returns (tuple) header, content
+#
 def parse_header(line):
     SEP = ':'
     n = line.find(SEP)
@@ -59,6 +29,10 @@ def parse_header(line):
     return line[:n].rstrip(), line[n + len(SEP):].lstrip()
 
 
+## Add header to existing headers dict.
+# @param headers (dict)
+# @return headers (dict)
+#
 def update_headers(line, headers):
     if len(headers) < constants.MAX_NUMBER_OF_HEADERS:
         k, v = parse_header(line)
@@ -69,8 +43,13 @@ def update_headers(line, headers):
     return headers
 
 
+## Checks if response status line is valid, and parse it.
+# @param status line (str)
+# @returns http signatue (str)
+# @returns status code (str)
+# @returns status (str)
+#
 def check_response(res):
-    # print res
     res_comps = res.split(' ', 2)
     if res_comps[0] != constants.HTTP_SIGNATURE:
         raise RuntimeError('Not HTTP protocol')
@@ -81,19 +60,20 @@ def check_response(res):
     return signature, status_num, status
 
 
+## Checks if request first line is valid, and parse it.
+# @param first line (str)
+# @returns method (str)
+# @returns uri (str)
+# @returns http signature (str)
+#
 def check_request(req):
-    # print "REQ"
-    # print req
     req_comps = req.split(' ', 2)
-    # print req_comps
     if req_comps[2] != constants.HTTP_SIGNATURE:
         raise RuntimeError('Not HTTP protocol')
     if len(req_comps) != 3:
         raise RuntimeError('Incomplete HTTP protocol')
 
     method, uri, signature = req_comps
-    # print "METHOD, URI, SIGNATURE"
-    # print method, uri, signature
     if method not in ('GET', 'CONNECT'):
         raise RuntimeError(
             "HTTP unsupported method '%s'" % method
@@ -103,6 +83,10 @@ def check_request(req):
     return method, uri, signature
 
 
+## Finds line in text.
+# @param text (str)
+# @returns line, rest of text (tuple)
+#
 def read_line(buf):
     n = buf.find(constants.CRLF_BIN)
     if n == -1:
@@ -111,6 +95,11 @@ def read_line(buf):
     return line, buf[n + len(constants.CRLF_BIN):]
 
 
+## Creates an error HTTP response.
+# @param code (int)
+# @param message (str)
+# @param extra (str)
+#
 def return_status(code, message, extra):
     response = (
         (
@@ -136,24 +125,10 @@ def return_status(code, message, extra):
     return response
 
 
-def add_buf(
-    self,
-    socket,
-    max_length=constants.MAX_HEADER_LENGTH,
-    block_size=constants.BLOCK_SIZE,
-):
-    try:
-        t = socket.recv(block_size)
-        if not t:
-            raise RuntimeError('Disconnect')
-        return t
-
-    except socket.error as e:
-        # print e.errno
-        if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
-            raise
-
-
+## Builds HTML table with cache data.
+# @param cache_files (dict)
+# @returns table body (str)
+#
 def build_cache_table(cache_files):
     body = constants.START_TABLE
     counter = 1
@@ -176,6 +151,10 @@ def build_cache_table(cache_files):
     return body
 
 
+## Creates HTML form for deleting cache entry.
+# @param url to be deleted (str)
+# @returns form (str)
+#
 def delete_form(url):
     return (
         '<form action="/manage" enctype="multipart/form-data"'
@@ -188,6 +167,9 @@ def delete_form(url):
     )
 
 
+## Creates HTML form for deleting all cache entries.
+# @returns form (str)
+#
 def delete_all_form():
     return (
         '<form action="/manage" enctype="multipart/form-data"'
@@ -198,11 +180,12 @@ def delete_all_form():
     )
 
 
+## Creates HTML form for refrash button.
+# @returns form (str)
+#
 def refrash_form():
     return (
         '<form action="/manage">'
         '<input type="submit" value="refrash">'
         '</form>'
     )
-
-# vim: expandtab tabstop=4 shiftwidth=4

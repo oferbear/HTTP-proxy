@@ -1,3 +1,7 @@
+## @package proxy.cache
+# Handles all cache activities
+#
+
 import constants
 import datetime
 import hashlib
@@ -8,11 +12,23 @@ import traceback
 import util
 
 
+## Cache Handler.
+#
+# Created when the program boots.
+# Handles all cache activities.
+#
 class Cache():
+    ## Constructor.
+    # @param logger (logging.Logger)
     def __init__(self, logger):
+        # Currently opened files
         self._opened_files = {}
         self._logger = logger
 
+    ## Checks if cache file exists and not expired.
+    # @param request_context (dict).
+    # @returns (bool) whether file exist or not.
+    #
     def check_if_exist(self, request_context):
         if request_context['uri'] in self._opened_files:
             return False
@@ -36,54 +52,55 @@ class Cache():
             )
             parsed_metadata = self.parse_metadata(metadata_file)
             exp_date = parsed_metadata['expiration_date']
-            # print exp_date
             parsed_metadata['hits'] = int(parsed_metadata['hits']) + 1
             self.update_metadata(metadata_file, parsed_metadata)
             metadata_file.close()
-            # print 'EXP DATE %s TIME NOW %s' % (exp_date, time.time())
             if int(exp_date) >= time.time():
                 return True
             else:
                 self.delete_cache(request_context['uri'])
         return False
 
+    ## Updates (rewrites) the metadata file
+    # @param fd (file).
+    # @param data (dict).
+    #
     def update_metadata(self, fd, data):
         fd.truncate(0)
         fd.seek(0, 0)
-        # print 'METADATA %s' % data
         for key in data.keys():
             fd.write('%s:%s\r\n' % (key, data[key]))
 
+    ## Checks if response should be cached or not.
+    # Based on headers from the HTTP response.
+    # @param response headers (dict).
+    #
     def check_headers(self, headers):
         if 'Cache-Control' in headers:
-            # print 'CACHE HEADERS %s' % headers
             cache_header = headers['Cache-Control']
-            # print 'CACHE HEADER %s' % cache_header
             parsed_header = self.parse_cache_header(cache_header)
             if 'max-age' in parsed_header:
                 if int(parsed_header['max-age']) > 0:
                     return int(parsed_header['max-age'])
         return False
 
+    ## Checks whether file should be cached or not.
+    # @param request_context (dict).
+    # @returns (bool) whether file should be cached or not.
+    #
     def check_if_cache(self, request_context):
         try:
             try:
                 os.mkdir('%s/cache' % os.getcwd())
             except OSError as e:
-                # print 'cache directory already existes'
                 pass
 
             try:
                 os.mkdir('%s/cache/metadata' % os.getcwd())
             except OSError as e:
-                # print 'exp directory already existes'
                 pass
 
-            # check_header = self.check_headers(request_context)
-            # if check_header is True:
             if self.check_if_exist(request_context):
-                # print 'FILE IS THERE'
-                # if self.check_date():
                 self._opened_files[request_context['uri']] = open(
                     '%s/%s/%s' % (
                         os.getcwd(),
@@ -95,16 +112,17 @@ class Cache():
                     'rb',
                 )
                 return True
-            # self.create_files(request_context, check_header)
-            # print 'CACHE DOESNT EXIST'
             return False
 
         except Exception as e:
             traceback.print_exc()
-            # print 'ERROR WITH CACHE FILE %s' % e
             self._logger.error('Error with cache file %s', e)
             return False
 
+    ## Parsing Cache-Control header.
+    # @param cache header (str).
+    # @returns parsed cache header (dict).
+    #
     def parse_cache_header(self, cache_header):
         to_return = {}
         for entry in cache_header.split(','):
@@ -115,6 +133,12 @@ class Cache():
                 to_return[entry] = None
         return to_return
 
+    ## Loads response from cache.
+    # Reades from relevent cache file and return requested number of bytes.
+    # @param request_context (dict).
+    # @param to_send_len (int) length of socket-object to_send.
+    # @returns part of the cached response (str).
+    #
     def load_response(self, request_context, to_send_len):
         try:
             read = ''
@@ -122,36 +146,24 @@ class Cache():
                 request_context['uri'] in self._opened_files and
                 to_send_len < constants.TO_SEND_MAXSIZE
             ):
-                # print 'ARE YOU HERE?????'
                 read = self._opened_files[request_context['uri']].read(
                     constants.TO_SEND_MAXSIZE - to_send_len
                 )
                 if not read:
-                    # self._cache = False  # we finished using the cache file
-                    # self._http_obj._closing = True
-                    # print 'CACHE %s IS CLOSINGGG' % request_context['uri']
                     self._opened_files[request_context['uri']].close()
                     del self._opened_files[request_context['uri']]
-                # self._http_obj._to_send += read
-            # print request_context['uri']
-            # print 'READ %s' % (read)
             return read
 
         except Exception as e:
-            # print 'ERROR READING CACHE FILE %s' % e
             self._logger.error('Error with cache file %s', e)
             traceback.print_exc()
 
+    ## Creates files for new cache storage.
+    # @param request_context (dict).
+    # @param exp - time to expire in seconds (int).
+    #
     def create_files(self, request_context, exp):
         try:
-            # print '%s %s/%s/%s' % (
-            #    'CACHE FILENAME',
-            #    os.getcwd(),
-            #    constants.CACHING_PATH,
-            #    self.encode_url(
-            #        request_context['uri'],
-            #    ),
-            # )
             self._opened_files[request_context['uri']] = open(
                 '%s/%s/%s' % (
                     os.getcwd(),
@@ -162,15 +174,6 @@ class Cache():
                 ),
                 'wb',
             )
-            # self._cached[request_context['uri']][1] = int(time.time())+exp
-            # print '%s %s/%s/exp/%s' % (
-            #    'EXP FILE NAME',
-            #    os.getcwd(),
-            #    constants.CACHING_PATH,
-            #    self.encode_url(
-            #        request_context['uri'],
-            #    )
-            # )
             metadata_file = open(
                 '%s/%s/metadata/%s' % (
                     os.getcwd(),
@@ -181,7 +184,6 @@ class Cache():
                 ),
                 'wb',
             )
-            # print 'EXP TIME %s' % self._cached[request_context['uri']][1]
             metadata_file.write(
                 'expiration_date:%s\r\n'
                 'url:%s\r\n'
@@ -191,36 +193,34 @@ class Cache():
                 )
             )
             metadata_file.close()
-            # print 'FILES CREATED'
 
         except Exception as e:
-            # print 'ERROR CREATING FILES %s' % e
             self._logger.error('Error creating files %s', e)
             traceback.print_exc()
 
+    ## Writes data to opend cache file.
+    # @param request_context (dict).
+    # @param to_add (str) text to written to file.
+    #
     def add_cache(self, request_context, to_add):
-        # print 'OPENED FILES %s' % self._opened_files
         if request_context['uri'] in self._opened_files:
-            # print self._file
-            # print 'TO ADD CACHE: %s' % to_add
-            # print 'WRITING TO FILE: %s' % (request_context['uri'])
             self._opened_files[request_context['uri']].write(to_add)
 
+    ## Get all cached responses.
+    # @returns (dict) dict with all urls cached, their expiration date & hits.
+    #
     def get_cached(self):
         try:
             os.mkdir('%s/cache' % os.getcwd())
         except OSError:
-            # print 'directory already existes'
             pass
 
         to_return = {}
         for fn in os.listdir('%s/cache' % os.getcwd()):
-            # print fn
             if (
                 os.path.isfile('%s/cache/%s' % (os.getcwd(), fn)) and
                 not fn.startswith('.')
             ):
-                # print 'yo' + str(fn)
                 metadata_file = open(
                     '%s/%s/metadata/%s' % (
                         os.getcwd(),
@@ -230,11 +230,9 @@ class Cache():
                     'rb',
                 )
                 parsed_metadata = self.parse_metadata(metadata_file)
-                # print 'METADATA %s' % parsed_metadata
                 exp_date = parsed_metadata['expiration_date']
                 uri = parsed_metadata['url']
                 hits = parsed_metadata['hits']
-                # print exp_date
                 metadata_file.close()
                 to_return[uri] = [
                     datetime.datetime.fromtimestamp(
@@ -244,12 +242,16 @@ class Cache():
                 ]
         return to_return
 
+    ## Deletes cache file.
+    # @param a url whose response will be deleted (str).
+    #
     def delete_cache(self, url):
-        # del self._cached[url]
         url = self.encode_url(url)
         os.remove('%s/cache/%s' % (os.getcwd(), url))
         os.remove('%s/cache/metadata/%s' % (os.getcwd(), url))
 
+    ## Delets all cached files.
+    #
     def delete_all_cache(self):
         for key in os.listdir('%s/cache' % os.getcwd()):
             if (
@@ -270,8 +272,10 @@ class Cache():
                 fn = self.encode_url(uri)
                 os.remove('%s/cache/%s' % (os.getcwd(), fn))
                 os.remove('%s/cache/metadata/%s' % (os.getcwd(), fn))
-        # print 'THIS SHOULD BE EMPTY %s' % self._cached
 
+    ## Parse metadata file content.
+    # @param (file) metadata file to be parsed.
+    #
     def parse_metadata(self, fd):
         to_return = {}
         read = fd.read(constants.BLOCK_SIZE)
@@ -282,6 +286,9 @@ class Cache():
             line, read = util.read_line(read)
         return to_return
 
+    ## Encode url to sha1 encoding.
+    # @param url to be encoded (str).
+    #
     def encode_url(self, url):
         sha1 = hashlib.sha1()
         sha1.update(url)

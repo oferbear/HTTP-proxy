@@ -1,25 +1,32 @@
 # -*- coding: utf-8 -*-
 
+## Block size for reading from files or sockets.
 BLOCK_SIZE = 1024
+## New line sign in HTTP protocol.
 CRLF = '\r\n'
+## CRLF encoded to utf-8.
 CRLF_BIN = CRLF.encode('utf-8')
+## Default HTTP port for web servers.
 DEFAULT_HTTP_PORT = 80
+## HTTP signature.
 HTTP_SIGNATURE = 'HTTP/1.1'
+## Max header length.
 MAX_HEADER_LENGTH = 4096
+## Max number of headers.
 MAX_NUMBER_OF_HEADERS = 100
-LISTEN = 'listen'
-ACTIVE = 'active'
-CLOSING = 'closing'
+## Mime mapping for HTTP protocol.
 MIME_MAPPING = {
     'html': 'text/html',
     'png': 'image/png',
     'txt': 'text/plain',
 }
+## To-send buffer max length.
 TO_SEND_MAXSIZE = 4096
+## Max request length.
 MAX_REQ_SIZE = 1000
+## Path for cache to be stored.
 CACHING_PATH = 'cache'
-CACHE_EXPIR_DAYS = 3
-SECONDS_IN_DAY = 86400
+## Beggining of HTML table.
 START_TABLE = (
     '<style>'
     'table, th, td {'
@@ -37,9 +44,8 @@ START_TABLE = (
     '<th>Delete</th>'
     '</tr>'
 )
+## End of HTML table.
 END_TABLE = (
     '</table>'
     '</body>'
 )
-
-# vim: expandtab tabstop=4 shiftwidth=4

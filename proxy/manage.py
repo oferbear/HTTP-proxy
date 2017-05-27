@@ -1,3 +1,7 @@
+## @package proxy.manage
+# Module for Manage, ManageListen, ManageInerface objects.
+#
+
 import constants
 import errno
 import fcntl
@@ -6,10 +10,10 @@ import pollable
 import select
 import socket
 import time
-import traceback
 import urlparse
 import util
 
+## States for parsing HTTP request and sending response.
 (
     REQUEST_STATE,
     HEADERS_STATE,
@@ -21,14 +25,26 @@ import util
 ) = range(7)
 
 
+## Manage object for receiving HTTP requests from source server and responding
+# to it.
+#
+# Created from ManageListen object.
+#
 class Manage(pollable.Pollable):
+    ## Constructor.
+    # @param socket (socket)
+    # @param headers (dict)
+    # @param cache_handler (Cache)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(
         self,
         socket,
         headers,
         cache_handler,
         application_context,
-        logger
+        logger,
     ):
         self._socket = socket
         self._state = 0
@@ -72,6 +88,10 @@ class Manage(pollable.Pollable):
     def request_context(self, request_context):
         self.request_context = request_context
 
+    ## Checks if received buffer length exceeded max request/response length.
+    # If true, closing socket and sending error message.
+    # @returns (bool) whether buffer exceeded max length.
+    #
     def check_if_maxsize(self):
         if len(self._received) > constants.MAX_REQ_SIZE:
             self._to_send = util.return_status(500, 'Internal Error', '')
@@ -83,6 +103,11 @@ class Manage(pollable.Pollable):
             return True
         return False
 
+    ## Receives the status line from the source server (client).
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def request_state(self, args, poll):
         self.add_buf()
         line = self.check_if_line()
@@ -126,6 +151,11 @@ class Manage(pollable.Pollable):
         self.check_if_maxsize()
         return False
 
+    ## Receives request headers from the source server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def headers_state(self, args, poll):
         line = ' '
         while line:
@@ -140,14 +170,13 @@ class Manage(pollable.Pollable):
         self.check_if_maxsize()
         return False
 
+    ## Receives requests content part from the source server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def content_state(self, args, poll):
-        # print self._request_context['headers']
-        # print 'LENGTH %s' % (
-        #    type(str(self._request_context['headers']['Content-Length']))
-        # )
         if int(self._request_context['headers']['Content-Length']) != 0:
-            # if '0' is not '0':
-            # print 'yo???'
             leng = int(self._request_context['headers']['Content-Length'])
             self._request_context['headers']['Content-Length'] = leng
             try:
@@ -159,7 +188,6 @@ class Manage(pollable.Pollable):
                     return True
 
             except socket.error as e:
-                # print e.errno
                 if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     self._logger.error(
                         'Manage %s socket error: %s',
@@ -169,15 +197,20 @@ class Manage(pollable.Pollable):
                     raise
 
             return False
-        # self._socket.shutdown(socket.SHUT_RD)
         return True
 
+    ## Builds responses status line.
+    # @returns (boll) if ready to move to next state.
+    #
     def response_status_state(self):
         self._to_send = (
             '%s 200 OK\r\n' % (constants.HTTP_SIGNATURE)
         ).encode('utf-8')
         return True
 
+    ## Builds response headers part.
+    # @returns (boll) if ready to move to next state.
+    #
     def response_header_state(self):
         try:
             if self._manage:
@@ -203,7 +236,6 @@ class Manage(pollable.Pollable):
             return True
 
         except IOError as e:
-            # traceback.print_exc()
             self._logger.error(
                 'Manage %s socket error: %s',
                 self._socket.fileno(),
@@ -216,8 +248,6 @@ class Manage(pollable.Pollable):
                 self._to_send = util.return_status(500, 'Internal Error', e)
 
         except Exception as e:
-            # print "ERROR " + str(e)
-            # traceback.print_exc()
             self._logger.error(
                 'Manage %s socket error: %s',
                 self._socket.fileno(),
@@ -226,6 +256,9 @@ class Manage(pollable.Pollable):
             self._state = CLOSING_STATE
             self._to_send = util.return_status(500, 'Internal Error', e)
 
+    ## Builds response content part.
+    # @returns (boll) if ready to move to next state.
+    #
     def response_content_state(self):
         try:
             if self._manage:
@@ -242,7 +275,6 @@ class Manage(pollable.Pollable):
             return False
 
         except IOError as e:
-            # traceback.print_exc()
             self._logger.error(
                 'Manage %s socket error: %s',
                 self._socket.fileno(),
@@ -255,8 +287,6 @@ class Manage(pollable.Pollable):
                 self._to_send = util.return_status(500, 'Internal Error', e)
 
         except Exception as e:
-            # print "ERROR " + str(e)
-            # traceback.print_exc()
             self._logger.error(
                 'Manage %s socket error: %s',
                 self._socket.fileno(),
@@ -265,11 +295,15 @@ class Manage(pollable.Pollable):
             self._state = CLOSING_STATE
             self._to_send = util.return_status(500, 'Internal Error', e)
 
+    ## Final state. Finished receiving. Ready to close socket.
+    # @returns (boll) if ready to move to next state.
+    #
     def closing_state(self):
         if not self._to_send:
             self.close_socket()
         return True
 
+    ## dict of Manage state machine.
     states = {
         REQUEST_STATE: {
             "function": request_state,
@@ -301,28 +335,35 @@ class Manage(pollable.Pollable):
         }
     }
 
+    ## Function to be called when poller have a POLLIN event.
+    # Manage is in the process of receving request from the source server.
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_read(self, poll, args):
-        # print "MANAGE STATE " + str(self._state)
         while (self._state <= CONTENT_STATE and
                 Manage.states[self._state]['function'](self, args, poll)):
             self._state = Manage.states[self._state]['next']
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # HttpSocket is in the process of sending response to the source server.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_write(self):
         while (self._state < CLOSING_STATE and
                 Manage.states[self._state]['function'](self)):
-            # print 'COMPLETED %s' % self._state
             self._state = Manage.states[self._state]['next']
-        # print "HERE?"
-        # print self._to_send
         self._to_send = self.send_all()
         if not self._to_send and self._state == CLOSING_STATE:
-            # print 'hey??'
-            self._state = constants.CLOSING
             self.close_socket()
             return self
         return None
 
+    ## Sends everything possible from to_send buffer.
+    # @returns (str) string from buffer that couldn't be sent.
+    #
     def send_all(self):
         try:
             buf = self._to_send
@@ -340,6 +381,10 @@ class Manage(pollable.Pollable):
 
         return buf
 
+    # Receives string from socket and adds it to received buffer.
+    # @param max_length (int) max header length.
+    # @param blocksize (int) length of bytes to receive.
+    #
     def add_buf(
         self,
         max_length=constants.MAX_HEADER_LENGTH,
@@ -352,7 +397,6 @@ class Manage(pollable.Pollable):
             self._received += t
 
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'Manage %s socket error: %s',
@@ -361,6 +405,9 @@ class Manage(pollable.Pollable):
                 )
                 raise
 
+    ## Checks if theres a line in the received buffer, and returns it.
+    # @returns (str) line that was found in received buffer.
+    #
     def check_if_line(self):
         # checks if theres a full line in what the socket received, if there
         # is returns it, if not adds buf to the 'received'
@@ -373,15 +420,24 @@ class Manage(pollable.Pollable):
         self._received = buf[n + len(constants.CRLF_BIN):]
         return line
 
+    ## Function to be called when poller have a POLLERR event.
+    # Socket has encountered an error, closing socket.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_error(self):
         raise RuntimeError
         return None
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
-        # print '%s MANAGE STATE %s' % (self._socket.fileno(), self._state)
         events = select.POLLERR
         if (
             self._state >= REQUEST_STATE and
@@ -394,20 +450,31 @@ class Manage(pollable.Pollable):
             self._state <= CLOSING_STATE
         ):
             events |= select.POLLOUT
-        # print 'MANAGE EVENTS %s %s' % (events, self._to_send)
         return events
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s MANAGELISTEN is closing' % str(self._socket.fileno())
         self._logger.debug(
             'Manage socket %s is closing' %
             self._socket.fileno()
         )
-        # self._socket.shutdown(socket.SHUT_WR)
         self._socket.close()
 
 
+## HttpListen object to accept new connections.
+#
+# Created by the __main__ function.
+# Creates Manage object.
+#
 class ManageListen(pollable.Pollable):
+    ## Constructor.
+    # @param bind_address (str)
+    # @param bind_port (int)
+    # @param cache_handler (Cache)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(
         self,
         bind_address,
@@ -441,6 +508,12 @@ class ManageListen(pollable.Pollable):
                 print 'Port', bind_port, 'already in use, trying again in 5sec'
                 time.sleep(5)
 
+    ## Function to be called when poller have a POLLIN event.
+    # ManageListen is accepting new connection and creates Manage object
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (ManageListen) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         s1, add = self._socket.accept()
         fcntl.fcntl(
@@ -458,49 +531,45 @@ class ManageListen(pollable.Pollable):
             self._application_context,
             self._logger,
         )
-        # self._logger.info(
-        #    'Local server request (Manage object created - %s)' % (
-        #        manage_obj._socket.fileno()
-        #    )
-        # )
-        # print "MANAGE OBJ %s%s: " % (manage_obj._socket.fileno(), manage_obj)
         poll.register(manage_obj)
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # @returns (ManageListen) object to be removed from poll.
+    #
     def on_write(self):
         return None
 
+    ## Function to be called when poller have a POLLERR event.
+    # @returns (ManageListen) object to be removed from poll.
+    #
     def on_error(self):
-        raise RuntimeError
-        return None
+        return self
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
         return select.POLLIN | select.POLLERR
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s MANAGELISTEN is closing' % str(self._socket.fileno())
         self._logger.debug(
             'ManageListen socket %s is closing' %
             self._socket.fileno()
         )
-        # try:
-        #    try:
-        #        # socket, ssl.SSLSocket
-        #        return self._socket.shutdown(socket.SHUT_RDWR)
-        #    except TypeError:
-        #        # SSL.Connection
-        #        return self._socket.shutdown()
-        # except socket.error, e:
-        #    # we don't care if the socket is already closed;
-        #    # this will often be the case in an http server context
-        #    if e.errno != errno.ENOTCONN:
-        #        raise
+
         self._socket.close()
 
 
+## States for creating management interface.
 (
     CACHE_FILES,
     THROUGHPUT,
@@ -508,7 +577,16 @@ class ManageListen(pollable.Pollable):
 ) = range(3)
 
 
+## Class for creating the management interface.
+#
+# Created by the Manage object, when the uri '/manage' is requested.
+#
 class ManageInerface():
+    ## Constructor.
+    # @param cache_handler (Cache)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(self, cache_handler, application_context, logger):
         self._state = CACHE_FILES
         self._body = ''
@@ -518,19 +596,27 @@ class ManageInerface():
         self._logger = logger
         self.create_interface()
 
+    ## Returns headers for management page.
+    # @returns headers (str)
+    #
     def get_headers(self):
         return ('Content-Length: %s\r\n'
                 'Content-Type: text/html\r\n\r\n') % (len(self._body))
 
+    ## Builds the cached table in the management page.
+    # @returns (boll) if ready to move to next state.
+    #
     def cache_state(self):
         self._body += '<h2>Cache Stored</h2>'
-        cache_files = self._cache_handler.get_cached()  # {
-        #     'http://www.mechon-mamre.org/i/t/t09b18.htm': '20 April 2017'
-        # }  # cache.get_cached()  # {name:date}
+        cache_files = self._cache_handler.get_cached()
+        # cache.get_cached()  # {name:[date, hits]}
         self._body += util.build_cache_table(cache_files)
 
         return True
 
+    ## Builds the throughput part of the management page.
+    # @returns (boll) if ready to move to next state.
+    #
     def throughput_state(self):
         self._body += '<h2>Throughput Statistics</h2>'
         time_started = self._application_context['statistics']['throughput'][1]
@@ -551,6 +637,7 @@ class ManageInerface():
 
         return True
 
+    ## State machine for bulding the management page.
     states = {
         CACHE_FILES: {
             "function": cache_state,
@@ -563,9 +650,10 @@ class ManageInerface():
 
     }
 
+    ## Creates the interface in the management page.
+    #
     def create_interface(self):
         self._body = (
-            # '<!DOCTYPE html>'
             '<html>'
             '<head>'
             '<title>Management</title>'

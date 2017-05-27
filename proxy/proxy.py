@@ -1,3 +1,7 @@
+## @package proxy.proxy
+# Module for UpStream, DownStream objects.
+#
+
 import constants
 import errno
 import fcntl
@@ -7,7 +11,22 @@ import select
 import socket
 
 
+## UpStream for sending and receiving HTTPS requests and responses.
+#
+# Created from HttpSocket class, when CONNECT requsts arrive.
+# Receives requests from the browser client server. Then moves the requests to
+# the DownStream object.
+#
 class UpStream(pollable.Pollable):
+    ## Constructor.
+    # @param socket (socket)
+    # @param address to connect to (str)
+    # @param port (int)
+    # @param poll object (poll).
+    # @param HttpSocket object (HttpSocket)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(
         self,
         socket,
@@ -33,7 +52,6 @@ class UpStream(pollable.Pollable):
         )
         poll.register(self)
         poll.register(self._peer)
-        # print "PROXY UPSTREAM CREATED"
 
     @property
     def socket(self):
@@ -63,6 +81,12 @@ class UpStream(pollable.Pollable):
         raise RuntimeError
         return None
 
+    ## Function to be called when poller have a POLLIN event.
+    # UpStream is in the process of receving request from the source server.
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (UpStream) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         try:
             if len(self._peer._to_send) <= constants.TO_SEND_MAXSIZE:
@@ -76,17 +100,21 @@ class UpStream(pollable.Pollable):
 
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # HttpSocket is in the process of sending response to the source server.
+    # This function sends everything from the to_send buffer.
+    # @returns (UpStream) object to be removed from poll.
+    #
     def on_write(self):
         try:
-            # print 'UP SENDING %s' % self._to_send
             self._to_send = self.send_all()
 
             if not self._to_send and self._closing:
-                # print 'hey??'
                 self.close_socket()
                 if self._peer:
                     self._peer._closing = True
                 return self
+
         except RuntimeError:
             self.close_socket()
             if self._peer:
@@ -95,21 +123,28 @@ class UpStream(pollable.Pollable):
 
         return None
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
         events = select.POLLERR | select.POLLIN
-        # if self._peer._to_send:
-        #    events |= select.POLLIN
         if (
             self._to_send and
             len(self._peer._to_send) < constants.TO_SEND_MAXSIZE
         ):
             events |= select.POLLOUT
-        # print 'PROXY EVENTS %s' % events
         return events
 
+    # Receives string from socket and adds it to received buffer.
+    # @param max_length (int) max header length.
+    # @param blocksize (int) length of bytes to receive.
+    #
     def add_buf(
         self,
         max_length=constants.MAX_HEADER_LENGTH,
@@ -122,7 +157,6 @@ class UpStream(pollable.Pollable):
             self._peer._to_send += t
 
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'UpStream %s socket error: %s',
@@ -131,6 +165,9 @@ class UpStream(pollable.Pollable):
                 )
                 raise
 
+    ## Sends everything possible from to_send buffer.
+    # @returns (str) string from buffer that couldn't be sent.
+    #
     def send_all(self):
         try:
             buf = self._to_send
@@ -152,8 +189,9 @@ class UpStream(pollable.Pollable):
 
         return buf
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s PROXY UPSTREAM is closing' % str(self._socket.fileno())
         self._logger.debug(
             'UpStream socket %s is closing' %
             self._socket.fileno()
@@ -161,7 +199,19 @@ class UpStream(pollable.Pollable):
         self._socket.close()
 
 
+## DownStream for sending and receiving HTTP requests and responses.
+#
+# Created from UpStream class.
+# Sends requests to the destination server and receives his response.
+#
 class DownStream(pollable.Pollable):
+    ## Constructor.
+    # @param address to connect to (str)
+    # @param port (int)
+    # @param HttpSocket object (HttpSocket)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(self, address, port, peer, application_context, logger):
         self._to_send = ''
         self._peer = peer
@@ -179,23 +229,17 @@ class DownStream(pollable.Pollable):
             os.O_NONBLOCK,
         )
         try:
-            # print "PORT " + str(port)
             self._socket.connect((address, port))
-            # print "CLIENT CONNECTED"
         except socket.error as e:
-            # print "ERROR CONNECTING %s" % str(e)
             self._logger.error(
                 'DownStream %s error connecting %s',
                 self._socket.fileno(),
                 e
             )
             if e.errno != errno.EINPROGRESS:
-                # self._state = CLOSING_STATE
                 self._peer._to_send = 'HTTP/1.1 403 Forbidden\r\n\r\n'
 
         self._peer._to_send = 'HTTP/1.1 200 Connection established\r\n\r\n'
-        # self._received = ''
-        # print "PROXY DOWNSTREAM CREATED"
         self._logger.debug('DownStream %s created', self._socket.fileno())
 
     @property
@@ -226,10 +270,16 @@ class DownStream(pollable.Pollable):
         raise RuntimeError
         return None
 
+    ## Function to be called when poller have a POLLIN event.
+    # DownStream is in the process of receving response from the destination
+    # server.
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (DownStream) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         try:
             if len(self._peer._to_send) <= constants.TO_SEND_MAXSIZE:
-                # print 'PROXY DOWN ADDING BUF'
                 self.add_buf()
 
         except RuntimeError:
@@ -240,14 +290,17 @@ class DownStream(pollable.Pollable):
 
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # DownStream is in the process of sending request to the destination
+    # server.
+    # This function sends everything from the to_send buffer.
+    # @returns (DownStream) object to be removed from poll.
+    #
     def on_write(self):
         try:
-
-            # print 'DOWN SENDING %s' % self._to_send
             self._to_send = self.send_all()
 
             if not self._to_send and self._closing:
-                # print 'hey??'
                 self.close_socket()
                 if self._peer:
                     self._peer._closing = True
@@ -261,21 +314,28 @@ class DownStream(pollable.Pollable):
 
         return None
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
         events = select.POLLERR | select.POLLIN
-        # if self._peer._to_send:
-        #    events |= select.POLLIN
         if (
             self._to_send and
             len(self._peer._to_send) < constants.TO_SEND_MAXSIZE
         ):
             events |= select.POLLOUT
-        # print 'PROXY EVENTS %s' % events
         return events
 
+    # Receives string from socket and adds it to received buffer.
+    # @param max_length (int) max header length.
+    # @param blocksize (int) length of bytes to receive.
+    #
     def add_buf(
         self,
         max_length=constants.MAX_HEADER_LENGTH,
@@ -283,13 +343,11 @@ class DownStream(pollable.Pollable):
     ):
         try:
             t = self._socket.recv(block_size)
-            # print 'ADDED PROXY DOWN %s' % t
             if not t:
                 raise RuntimeError('Disconnect')
             self._peer._to_send += t
 
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'DownStream %s socket error: %s',
@@ -298,6 +356,9 @@ class DownStream(pollable.Pollable):
                 )
                 raise RuntimeError('Disconnect')
 
+    ## Sends everything possible from to_send buffer.
+    # @returns (str) string from buffer that couldn't be sent.
+    #
     def send_all(self):
         try:
             buf = self._to_send
@@ -319,8 +380,9 @@ class DownStream(pollable.Pollable):
 
         return buf
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s PROXY DOWNSTREAM is closing' % str(self._socket.fileno())
         self._logger.debug(
             'DownStream socket %s is closing' %
             self._socket.fileno()

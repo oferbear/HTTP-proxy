@@ -1,3 +1,7 @@
+## @package proxy.client
+# Module for Client object.
+#
+
 import constants
 import errno
 import fcntl
@@ -7,6 +11,7 @@ import select
 import socket
 import util
 
+## States for parsing HTTP response
 (
     REQUEST_STATE,
     HEADERS_STATE,
@@ -15,7 +20,19 @@ import util
 ) = range(4)
 
 
+## Client for sending and receiving HTTP requests and responses.
+#
+# Created from HttpSocket class.
+# Sends requests to the destination server and parse his response.
+#
 class Client(pollable.Pollable):
+    ## Constructor.
+    # @param address - desitnation address (str)
+    # @param port - bind port (int)
+    # @param peer - HttpSocket class (HttpSocket)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(self, address, port, peer, application_context, logger):
         self._state = REQUEST_STATE
         self._peer = peer
@@ -30,11 +47,8 @@ class Client(pollable.Pollable):
             os.O_NONBLOCK,
         )
         try:
-            # print "PORT " + str(port)
             self._socket.connect((address, port))
-            # print "CLIENT CONNECTED"
         except socket.error as e:
-            # print "ERROR CONNECTING " + str(e)
             if e.errno != errno.EINPROGRESS:
                 self._state = CLOSING_STATE
                 self._peer._closing
@@ -42,11 +56,8 @@ class Client(pollable.Pollable):
         self._to_send = ''
         self._received = ''
         self._status_line = ''
-        self._headers = {
-            # 'Content-Length': '0'
-        }
+        self._headers = {}
         self._application_context = application_context
-        # print "CLIENT CREATED"
 
     @property
     def socket(self):
@@ -72,6 +83,13 @@ class Client(pollable.Pollable):
     def to_send(self, r):
         self._to_send = r
 
+    ## Function to be called when poller have a POLLIN event.
+    # Client is in the process of receving response from the destination
+    # server.
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (Client) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         while (self._state <= CLOSING_STATE and
                 Client.client_states[self._state]['function'](
@@ -80,12 +98,16 @@ class Client(pollable.Pollable):
                     poll,
                 )):
             if self._state == CLOSING_STATE:
-                # print "ARE YOU RETURNING YOURSELF OR NOT?"
                 return self
             self._state = Client.client_states[self._state]['next']
 
         return None
 
+    ## Receives the status line from the destination server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def request_state(self, args, poll):
         try:
             self.add_buf()
@@ -115,12 +137,16 @@ class Client(pollable.Pollable):
                 )
             ).encode('utf-8')
             self._peer._to_send = to_send
-            # self._peer._cache.add_cache(self._peer._request_context, to_send)
             self._status_line = to_send
             return True
         self.check_if_maxsize()
         return False
 
+    ## Receives response headers from the destination server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def headers_state(self, args, poll):
         line = ' '
         if constants.CRLF not in self._received:
@@ -132,13 +158,10 @@ class Client(pollable.Pollable):
                     line,
                     self._headers,
                 )
-        # print 'HEADERS %s' % self._headers
         check_header = self._peer._cache.check_headers(
             self._headers
         )
-        # print 'CHECK HEADER %s' % check_header
         if check_header is not False:
-            # print 'REQUEST CONTEXT %s' % self._peer._request_context
             self._peer._cache.create_files(
                 self._peer._request_context,
                 check_header,
@@ -169,28 +192,23 @@ class Client(pollable.Pollable):
         self.check_if_maxsize()
         return False
 
+    ## Receives responses content part from the destination server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def content_state(self, args, poll):
-        # if self._headers['Content-Length'] is not '0':
         finished = False
-        # print self._headers
         if 'Content-Length' in self._headers:
             leng = int(self._headers['Content-Length'])
-            # print 'LENGTH (CLIENT HEADERS) %s' % leng
             self._headers['Content-Length'] = leng
-        # else:
-        #    self._headers['Content-Length'] = None
 
         if len(self._peer._to_send) > constants.TO_SEND_MAXSIZE:
-            # print 'PEER TO SEND: %s' % self._peer._to_send
             return False
-        # if len(self._received) < leng:
         t = ''
         try:
-            # print 'yo are you here???'
             t = self._socket.recv(constants.BLOCK_SIZE)
-            # print 'finished receive'
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'Client %s socket error: %s',
@@ -199,15 +217,11 @@ class Client(pollable.Pollable):
                 )
                 self._state = CLOSING_STATE
 
-        # print 'RECEIVED: %s' % t
         if not t:
             finished = True
-            # self._headers['Content-Length'] == 0
-            # raise RuntimeError('Disconnect')
+
         self._received += t
-        # print 'BLOCK RECEIVED %s' % t
         self._peer._to_send += self._received
-        # print 'REQUEST CONTEXT %s' % self._peer._request_context
         self._peer._cache.add_cache(
             self._peer._request_context,
             self._received,
@@ -216,7 +230,6 @@ class Client(pollable.Pollable):
             self._headers['Content-Length'] = leng - len(self._received)
         self._received = ''
 
-        # if self._headers['Content-Length'] == 0:
         if 'Content-Length' in self._headers:
             if self._headers['Content-Length'] == 0:
                 finished = True
@@ -232,16 +245,17 @@ class Client(pollable.Pollable):
 
         return False
 
-        # self._peer._cache.add_cache(self._received)
-        # self._peer._cache._file.close()
-        # return True
-
+    ## Final state. Finished receiving. Ready to close socket.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def closing_state(self, args, poll):
         self._peer._closing = True
         self.close_socket()
-        # print 'SOCKET CLOSED'
         return True
 
+    ## dict of client state machine.
     client_states = {
         REQUEST_STATE: {
             "function": request_state,
@@ -261,51 +275,67 @@ class Client(pollable.Pollable):
         }
     }
 
+    ## Function to be called when poller have a POLLOUT event.
+    # Client is in the process of sending request to the destination server.
+    # This function sends everything from the to_send buffer.
+    # @returns (Client) object to be removed from poll.
+    #
     def on_write(self):
-        # print 'CLIENT SENDING %s' % self._to_send
         self._to_send = self.send_all()
-        # if not self._to_send and self._state == CLOSING_STATE:
-        #    self._state = constants.CLOSING
-        #    self.close_socket()
-        #    return self
         return None
 
+    ## Function to be called when poller have a POLLERR event.
+    # Socket has encountered an error, closing socket.
+    # @returns (Client) object to be removed from poll.
+    #
     def on_error(self):
         self.close_socket()
         if self._peer:
             self._peer._closing = True
         return self
 
+    ## Function to be called when poller have a POLLHUP event.
+    # Socket is ready to be close, closing socket.
+    # @returns (Client) object to be removed from poll.
+    #
     def on_hup(self):
         self.close_socket()
         if self._peer:
             self._peer._closing = True
         return self
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
-        # print '%s CLIENT STATE %s' % (self._socket.fileno(), self._state)
         events = select.POLLERR
         if (
             self._state >= REQUEST_STATE and
             self._state <= CLOSING_STATE
         ):
             events |= select.POLLIN
-        if self._to_send:  # or self._state == CLOSING_STATE:
+        if self._to_send:
             events |= select.POLLOUT
-            # print 'CLIENT %s: SOMETHING TO SEND' % self._socket.fileno()
         return events
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print str(self._socket.fileno()) + " CLIENT is closing"
         self._logger.debug(
             'Client socket %s is closing' %
             self._socket.fileno()
         )
         self._socket.close()
 
+    ## Sends everything possible from to_send buffer.
+    # @returns (str) string from buffer that couldn't be sent.
+    #
     def send_all(self):
         try:
             buf = self._to_send
@@ -327,6 +357,10 @@ class Client(pollable.Pollable):
 
         return buf
 
+    # Receives string from socket and adds it to received buffer.
+    # @param max_length (int) max header length.
+    # @param blocksize (int) length of bytes to receive.
+    #
     def add_buf(
         self,
         max_length=constants.MAX_HEADER_LENGTH,
@@ -339,7 +373,6 @@ class Client(pollable.Pollable):
             self._received += t
 
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'Client %s socket error: %s',
@@ -348,21 +381,25 @@ class Client(pollable.Pollable):
                 )
                 raise RuntimeError('Disconnect')
 
+    ## Checks if theres a line in the received buffer, and returns it.
+    # @returns (str) line that was found in received buffer.
+    #
     def check_if_line(self):
-        # checks if theres a full line in what the socket received, if there
-        # is returns it, if not adds buf to the 'received'
         buf = self._received
         n = buf.find(constants.CRLF_BIN)
         if n == -1:
-            # self.add_buf()
             return None
         line = buf[:n].decode('utf-8')
         self._received = buf[n + len(constants.CRLF_BIN):]
         return line
 
+    ## Checks if received buffer length exceeded max request/response length.
+    # If true, closing socket and sending error message.
+    # @returns (bool) whether buffer exceeded max length.
+    #
     def check_if_maxsize(self):
         if len(self._received) > constants.MAX_REQ_SIZE:
-            self._to_send = util.return_status(500, 'Internal Error', '')
+            self._peer._to_send = util.return_status(500, 'Internal Error', '')
             self._state = CLOSING_STATE
             self._logger.error(
                 'Client %s received-buffer reached max-size',

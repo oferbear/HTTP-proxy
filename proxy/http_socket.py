@@ -1,3 +1,7 @@
+## @package proxy.http_socket
+# Module for HttpSocket, HttpListen objects.
+#
+
 import client
 import constants
 import errno
@@ -10,6 +14,7 @@ import socket
 import time
 import util
 
+## States for parsing HTTP request
 (
     REQUEST_STATE,
     HEADERS_STATE,
@@ -18,7 +23,21 @@ import util
 ) = range(4)
 
 
+## HttpSocket for sending and receiving HTTP requests and responses.
+#
+# Created from HttpListen class.
+# Receives requests from the browser client server and parse his request. Then
+# moves the requests to the Client object.
+#
 class HttpSocket(pollable.Pollable):
+    ## Constructor.
+    # @param socket (socket)
+    # @param state (int)
+    # @param headers (dict)
+    # @param cache_handler (Cache)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(
         self,
         socket,
@@ -42,8 +61,6 @@ class HttpSocket(pollable.Pollable):
             'uri': '',
             'headers': headers,
             'content': '',
-            'file_name': '',
-            'file_obj': '',
             'application_context': application_context,
         }
 
@@ -71,6 +88,10 @@ class HttpSocket(pollable.Pollable):
     def request_context(self, request_context):
         self.request_context = request_context
 
+    ## Checks if received buffer length exceeded max request/response length.
+    # If true, closing socket and sending error message.
+    # @returns (bool) whether buffer exceeded max length.
+    #
     def check_if_maxsize(self):
         if len(self._received) > constants.MAX_REQ_SIZE:
             self._to_send = util.return_status(500, 'Internal Error', '')
@@ -82,6 +103,11 @@ class HttpSocket(pollable.Pollable):
             return True
         return False
 
+    ## Receives the status line from the source server (client).
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def request_state(self, args, poll):
         self.add_buf()
         line = self.check_if_line()
@@ -124,32 +150,17 @@ class HttpSocket(pollable.Pollable):
                     'UpStream %s object created',
                     upstream._socket.fileno(),
                 )
-                # upstream._peer._to_send = self._received
-                # downstream = proxy.DownStream(address, port, self._socket)
-                # poll.register(upstream)
-                # poll.register(downstream)
                 poll._pollables.remove(self)
-                # self.close_socket()
                 self._state = CLOSING_STATE
                 self._closing = True
                 return True
 
             if '//' not in uri:
                 raise RuntimeError('bad request')
-            file_name = os.path.normpath(
-                '%s%s' % (
-                    args.base,
-                    os.path.normpath(uri),
-                )
-            )
             self._request_context['method'] = method
             self._request_context['uri'] = uri
-            self._request_context['file_name'] = file_name
-            # self._cache = cache.Cache()
-            # print 'CACHED %s %s' % (self._caching, self._cache._cached)
             address, uri = uri.split('//', 1)[1].split('/', 1)
             address = '%s:' % (address)
-            # print address
             address, port = address.split(':', 1)
             port = port.replace(':', '')
             if not port:
@@ -158,7 +169,6 @@ class HttpSocket(pollable.Pollable):
                 port = int(port)
             self._caching = self._cache.check_if_cache(self._request_context)
             if self._caching:
-                # print 'CACHING yooo'
                 self._logger.info(
                     'HttpSocket %s: Found in cache %s',
                     self._socket.fileno(),
@@ -194,6 +204,11 @@ class HttpSocket(pollable.Pollable):
         self.check_if_maxsize()
         return False
 
+    ## Receives request headers from the source server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def headers_state(self, args, poll):
         line = ' '
         if constants.CRLF not in self._received:
@@ -206,8 +221,7 @@ class HttpSocket(pollable.Pollable):
                     line,
                     self._request_context['headers'],
                 )
-            # print 'LINE: %s' % line
-        # print 'SELF.RECEIVED: %s' % self._received
+
         if self._received == constants.CRLF or line == '':
             for key in self._request_context['headers']:
                 self._peer._to_send += '%s: %s%s' % (
@@ -216,11 +230,15 @@ class HttpSocket(pollable.Pollable):
                     constants.CRLF,
                 )
             self._peer._to_send += constants.CRLF
-            # print 'PEERS TOSEND %s' % self._peer._to_send
             return True
         self.check_if_maxsize()
         return False
 
+    ## Receives requests content part from the source server.
+    # @param args (dict) program arguments.
+    # @param poll object (poll).
+    # @returns (boll) if ready to move to next state.
+    #
     def content_state(self, args, poll):
         if self.request_context['headers']['Content-Length'] is not '0':
             leng = int(self._request_context['headers']['Content-Length'])
@@ -235,7 +253,6 @@ class HttpSocket(pollable.Pollable):
                     return True
 
             except socket.error as e:
-                # print e.errno
                 if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     self._logger.error(
                         'HttpSocket %s socket error: %s',
@@ -247,11 +264,15 @@ class HttpSocket(pollable.Pollable):
             return False
         return True
 
+    ## Final state. Finished receiving. Ready to close socket.
+    # @returns (boll) if ready to move to next state.
+    #
     def closing_state(self):
         if not self._to_send:
             self.close_socket()
         return True
 
+    ## dict of HttpSocket state machine.
     states = {
         REQUEST_STATE: {
             "function": request_state,
@@ -271,17 +292,25 @@ class HttpSocket(pollable.Pollable):
         }
     }
 
+    ## Function to be called when poller have a POLLIN event.
+    # HttpSocket is in the process of receving request from the source server.
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         while (self._state <= CONTENT_STATE and
                 HttpSocket.states[self._state]['function'](self, args, poll)):
             self._state = HttpSocket.states[self._state]['next']
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # HttpSocket is in the process of sending response to the source server.
+    # This function sends everything from the to_send buffer.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_write(self):
-        # print 'TOSEND: %s' % self._to_send
-        # print 'HTTP SOCKET ON WRITE'
         self._to_send = self.send_all()
-        # print 'SELF.CACHING %s' % self._caching
         if (
             self._caching and
             not self._closing and
@@ -295,38 +324,43 @@ class HttpSocket(pollable.Pollable):
                 self._closing = True
             self._to_send += response
 
-        # print 'TEST TEST %s %s' % (self._to_send, self._closing)
         if not self._to_send and self._closing:
-            # print 'hey??'
             self.close_socket()
-            # print 'PEERS STATE %s' % self._peer._state
             if self._peer:
                 self._peer._state = client.CLOSING_STATE
             return self
         return None
 
+    ## Function to be called when poller have a POLLERR event.
+    # Socket has encountered an error, closing socket.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_error(self):
-        # raise RuntimeError
         self.close_socket()
         if self._peer:
             self._peer._state = client.CLOSING_STATE
         return self
 
+    ## Function to be called when poller have a POLLHUP event.
+    # Socket is ready to be close, closing socket.
+    # @returns (HttpSocket) object to be removed from poll.
+    #
     def on_hup(self):
         self.close_socket()
         if self._peer:
             self._peer._state = client.CLOSING_STATE
         return self
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
-        # print '%s HTTPSOCKET STATE %s TO SEND %s' % (
-        #    self._socket.fileno(),
-        #    self._state,
-        #    self._to_send,
-        # )
         events = select.POLLERR
         if (
             self._state >= REQUEST_STATE and
@@ -338,9 +372,12 @@ class HttpSocket(pollable.Pollable):
             self._to_send or self._closing
         ):
             events |= select.POLLOUT
-        # print 'HTTPSOCKET EVENTS %s' % events
         return events
 
+    # Receives string from socket and adds it to received buffer.
+    # @param max_length (int) max header length.
+    # @param blocksize (int) length of bytes to receive.
+    #
     def add_buf(
         self,
         max_length=constants.MAX_HEADER_LENGTH,
@@ -349,13 +386,11 @@ class HttpSocket(pollable.Pollable):
         try:
             t = self._socket.recv(block_size)
             if not t:
-                # raise RuntimeError('Disconnect')
                 self._state = CLOSING_STATE
                 self._closing = True
             self._received += t
 
         except socket.error as e:
-            # print e.errno
             if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                 self._logger.error(
                     'HttpSocket %s socket error: %s',
@@ -364,6 +399,9 @@ class HttpSocket(pollable.Pollable):
                 )
                 raise
 
+    ## Sends everything possible from to_send buffer.
+    # @returns (str) string from buffer that couldn't be sent.
+    #
     def send_all(self):
         try:
             buf = self._to_send
@@ -385,21 +423,21 @@ class HttpSocket(pollable.Pollable):
 
         return buf
 
+    ## Checks if theres a line in the received buffer, and returns it.
+    # @returns (str) line that was found in received buffer.
+    #
     def check_if_line(self):
-        # checks if theres a full line in what the socket received, if there
-        # is returns it, if not adds buf to the 'received'
         buf = self._received
-        # print 'BUF: %s' % buf
         n = buf.find(constants.CRLF_BIN)
         if n == -1:
-            # self.add_buf()
             return None
         line = buf[:n].decode('utf-8')
         self._received = buf[n + len(constants.CRLF_BIN):]
         return line
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s HTTPSOCKET is closing' % str(self._socket.fileno())
         self._logger.debug(
             'HttpSocket socket %s is closing' %
             self._socket.fileno()
@@ -407,7 +445,19 @@ class HttpSocket(pollable.Pollable):
         self._socket.close()
 
 
+## HttpListen object to accept new connections.
+#
+# Created by the __main__ function.
+# Creates HttpSocket object.
+#
 class HttpListen(pollable.Pollable):
+    ## Constructor.
+    # @param bind_address (str)
+    # @param bind_port (int)
+    # @param cache_handler (Cache)
+    # @param application_context (dict)
+    # @param logger (logging.Logger)
+    #
     def __init__(
         self,
         bind_address,
@@ -443,6 +493,12 @@ class HttpListen(pollable.Pollable):
                 )
                 time.sleep(5)
 
+    ## Function to be called when poller have a POLLIN event.
+    # HttpListen is accepting new connection and creates HttpSocket object
+    # @param poll object (poll).
+    # @param args (dict) program arguments.
+    # @returns (HttpListen) object to be removed from poll.
+    #
     def on_read(self, poll, args):
         s1, add = self._socket.accept()
         fcntl.fcntl(
@@ -468,21 +524,33 @@ class HttpListen(pollable.Pollable):
         poll.register(http_obj)
         return None
 
+    ## Function to be called when poller have a POLLOUT event.
+    # @returns (HttpListen) object to be removed from poll.
+    #
     def on_write(self):
         return None
 
+    ## Function to be called when poller have a POLLERR event.
+    # @returns (HttpListen) object to be removed from poll.
+    #
     def on_error(self):
-        raise RuntimeError
-        return None
+        return self
 
+    ## Returns poll events.
+    # @returns (int) poll events.
+    #
     def get_events(self):
         return select.POLLIN | select.POLLERR
 
+    ## Returns sockets file discriptor.
+    # @returns (str) sockets file discriptor.
+    #
     def get_fd(self):
         return self._socket.fileno()
 
+    ## Closing socket.
+    #
     def close_socket(self):
-        # print '%s HTTPLISTEN is closing' % str(self._socket.fileno())
         self._logger.debug(
             'HttpListen socket %s is closing' %
             self._socket.fileno()
