@@ -156,7 +156,14 @@ class HttpSocket(pollable.Pollable):
                 return True
 
             if '//' not in uri:
-                raise RuntimeError('bad request')
+                self._to_send = util.return_status(400, 'Bad request', '')
+                self._state = CLOSING_STATE
+                self._logger.error(
+                    'HttpSocket %s Bad request %s',
+                    self._socket.fileno(),
+                    uri,
+                )
+                return True
             self._request_context['method'] = method
             self._request_context['uri'] = uri
             address, uri = uri.split('//', 1)[1].split('/', 1)

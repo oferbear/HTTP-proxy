@@ -6,8 +6,10 @@ BLOCK_SIZE = 1024
 CRLF = '\r\n'
 ## CRLF encoded to utf-8.
 CRLF_BIN = CRLF.encode('utf-8')
-## Default HTTP port for web servers.
-DEFAULT_HTTP_PORT = 80
+## Default proxy port for web servers.
+DEFAULT_PROXY_PORT = 8080
+## Default server port for web servers.
+DEFAULT_SERVER_PORT = 9090
 ## HTTP signature.
 HTTP_SIGNATURE = 'HTTP/1.1'
 ## Max header length.

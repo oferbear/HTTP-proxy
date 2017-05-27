@@ -42,13 +42,13 @@ def parse_args():
     )
     parser.add_argument(
         '--proxy-bind-port',
-        default=constants.DEFAULT_HTTP_PORT,
+        default=constants.DEFAULT_PROXY_PORT,
         type=int,
         help='Proxy bind port, default: %(default)s',
     )
     parser.add_argument(
         '--server-bind-port',
-        default=constants.DEFAULT_HTTP_PORT,
+        default=constants.DEFAULT_SERVER_PORT,
         type=int,
         help='Server bind port, default: %(default)s',
     )
