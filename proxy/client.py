@@ -241,6 +241,10 @@ class Client(pollable.Pollable):
                 self._peer._cache._opened_files[
                     self._peer._request_context['uri']
                 ].close()
+                del self._peer._cache._opened_files[
+                    self._peer._request_context['uri']
+                ]
+
             return True
 
         return False

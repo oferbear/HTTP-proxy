@@ -607,7 +607,7 @@ class ManageInerface():
     # @returns (boll) if ready to move to next state.
     #
     def cache_state(self):
-        self._body += '<h2>Cache Stored</h2>'
+        self._body += '<h3>Cache Stored</h3>'
         cache_files = self._cache_handler.get_cached()
         # cache.get_cached()  # {name:[date, hits]}
         self._body += util.build_cache_table(cache_files)
@@ -618,7 +618,7 @@ class ManageInerface():
     # @returns (boll) if ready to move to next state.
     #
     def throughput_state(self):
-        self._body += '<h2>Throughput Statistics</h2>'
+        self._body += '<h3>Throughput Statistics</h3>'
         time_started = self._application_context['statistics']['throughput'][1]
         self._body += '<td> throughput rate for the last %s seconds:\r\n' % (
             int(round(time.time() - time_started))
@@ -660,7 +660,8 @@ class ManageInerface():
             '<link rel="stylesheet" type="text/css" href="style.css">'
             '</head>'
             '<meta http-equiv="refresh" content="1;URL=/manage" >'
-            '<h1>Management Interface</h1>'
+            '<h1>HTTP Proxy by Ofer Bear</h1>'
+            '<h2>Management Interface</h2>'
             '%s\t\t%s' % (
                 util.refrash_form(),
                 util.delete_all_form(),
