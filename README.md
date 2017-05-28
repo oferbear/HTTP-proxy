@@ -19,7 +19,8 @@ and running:
 1) Download and install Python2.7 (https://www.python.org/download/releases/2.7/)
 2) Download this repository on your machine (Posix machine only)
 3) On Windows, download and install Cygwin
-3) Download and install any modern browser (Firefox is better, for setting the proxy server only on the browser)
+4) Download and install any modern browser
+5) Set up your browser to use proxy, according to the ip where the program will run and the port you'll choose (on Firefox, use "Foxyproxy")
 ```
 ### Execution
 
