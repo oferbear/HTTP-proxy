@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 ## @package proxy.__main__
 # HTTP Proxy with management capebilities.
+## @file __main__.py
+# Implementation of @ref proxy.__main__
 #
 import argparse
 import cache

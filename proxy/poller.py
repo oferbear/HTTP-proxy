@@ -1,5 +1,7 @@
 ## @package proxy.poller
 # Module for Poller object.
+## @file poller.py
+# Implementation of @ref proxy.poller
 #
 
 import select

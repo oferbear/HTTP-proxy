@@ -1,5 +1,7 @@
 ## @package proxy.direct_socket
 # Module for DirectSocketUp, DirectSocketDown objects.
+## @file direct_socket.py
+# Implementation of @ref proxy.direct_socket
 #
 
 import constants
@@ -23,7 +25,7 @@ class DirectSocketUp(pollable.Pollable):
     # @param address to connect to (str)
     # @param port (int)
     # @param poll object (poll).
-    # @param ProxySocket object (ProxySocket)
+    # @param http_socket (ProxySocket) ProxySocket object 
     # @param application_context (dict)
     # @param logger (logging.Logger)
     #
@@ -209,7 +211,7 @@ class DirectSocketDown(pollable.Pollable):
     ## Constructor.
     # @param address to connect to (str)
     # @param port (int)
-    # @param ProxySocket object (ProxySocket)
+    # @param peer (ProxySocket) ProxySocket object. 
     # @param application_context (dict)
     # @param logger (logging.Logger)
     #

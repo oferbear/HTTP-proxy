@@ -1,5 +1,7 @@
 ## @package proxy.cache
 # Handles all cache activities
+## @file cache.py
+# Implementation of @ref proxy.cache
 #
 
 import constants
@@ -73,7 +75,7 @@ class Cache():
 
     ## Checks if response should be cached or not.
     # Based on headers from the HTTP response.
-    # @param response headers (dict).
+    # @param headers (dict) response headers.
     #
     def check_headers(self, headers):
         if 'Cache-Control' in headers:
@@ -120,8 +122,8 @@ class Cache():
             return False
 
     ## Parsing Cache-Control header.
-    # @param cache header (str).
-    # @returns parsed cache header (dict).
+    # @param cache_header (str) cache header.
+    # @returns (dict) parsed cache header.
     #
     def parse_cache_header(self, cache_header):
         to_return = {}
@@ -243,7 +245,7 @@ class Cache():
         return to_return
 
     ## Deletes cache file.
-    # @param a url whose response will be deleted (str).
+    # @param url (str) a url whose response will be deleted.
     #
     def delete_cache(self, url):
         url = self.encode_url(url)
@@ -274,7 +276,7 @@ class Cache():
                 os.remove('%s/cache/metadata/%s' % (os.getcwd(), fn))
 
     ## Parse metadata file content.
-    # @param (file) metadata file to be parsed.
+    # @param fd (file) metadata file to be parsed.
     #
     def parse_metadata(self, fd):
         to_return = {}

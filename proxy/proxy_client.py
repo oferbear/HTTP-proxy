@@ -1,5 +1,7 @@
 ## @package proxy.proxy_client
 # Module for ProxyClientSocket object.
+## @file proxy_client.py
+# Implementation of @ref proxy.proxy_client
 #
 
 import constants

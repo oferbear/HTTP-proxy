@@ -1,5 +1,7 @@
 ## @package proxy.http_socket
 # Module for HttpSocket, HttpListen objects.
+## @file http_socket.py
+# Implementation of @ref proxy.http_socket
 #
 
 import client

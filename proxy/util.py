@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 ## @package proxy.util
 # Module for util functions.
+## @file util.py
+# Implementation of @ref proxy.util
 #
 
 import constants
@@ -30,8 +32,9 @@ def parse_header(line):
 
 
 ## Add header to existing headers dict.
-# @param headers (dict)
-# @return headers (dict)
+# @param line (str) header to add to headers dict.
+# @param headers (dict) Header dict.
+# @return (dict) headers
 #
 def update_headers(line, headers):
     if len(headers) < constants.MAX_NUMBER_OF_HEADERS:
@@ -44,7 +47,7 @@ def update_headers(line, headers):
 
 
 ## Checks if response status line is valid, and parse it.
-# @param status line (str)
+# @param res (str) status line 
 # @returns http signatue (str)
 # @returns status code (str)
 # @returns status (str)
@@ -61,10 +64,10 @@ def check_response(res):
 
 
 ## Checks if request first line is valid, and parse it.
-# @param first line (str)
-# @returns method (str)
-# @returns uri (str)
-# @returns http signature (str)
+# @param req (str) first line 
+# @returns (str) method 
+# @returns (str) uri 
+# @returns (str) http signature 
 #
 def check_request(req):
     req_comps = req.split(' ', 2)
@@ -84,7 +87,7 @@ def check_request(req):
 
 
 ## Finds line in text.
-# @param text (str)
+# @param buf (str) text 
 # @returns line, rest of text (tuple)
 #
 def read_line(buf):

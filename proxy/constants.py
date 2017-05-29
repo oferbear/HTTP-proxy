@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+## @package proxy.constants
+# Constants used within the program.
+## @file constants.py
+# Implementation of @ref proxy.constants
+#
+
 
 ## Block size for reading from files or sockets.
 BLOCK_SIZE = 1024

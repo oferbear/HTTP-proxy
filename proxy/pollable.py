@@ -1,5 +1,7 @@
 ## @package proxy.pollable
 # Module for Pollable object.
+## @file pollable.py
+# Implementation of @ref proxy.pollable
 #
 
 
