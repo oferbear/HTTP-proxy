@@ -5,9 +5,9 @@
 import argparse
 import cache
 import constants
-import http_socket
+import http_proxy
 import logging
-import manage
+import http_server
 import os
 import poller
 import time
@@ -92,7 +92,7 @@ def setup_logging(stream=None, level=logging.INFO):
                 logging.Formatter(
                     fmt=(
                         '%(asctime)-15s '
-                        '[%(levelname)-7s] '
+                        '[%(levelname)-s] '
                         '%(name)s::%(funcName)s:%(lineno)d '
                         '%(message)s'
                     ),
@@ -132,7 +132,7 @@ def main():
         # Create cache handler.
         cache_handler = cache.Cache(logger)
         # Create proxy listener.
-        proxy_listener = http_socket.HttpListen(
+        proxy_listener = http_proxy.ProxyListen(
             args.bind_address,
             args.proxy_bind_port,
             cache_handler,
@@ -140,7 +140,7 @@ def main():
             logger,
         )
         # Create server listener.
-        server_listener = manage.ManageListen(
+        server_listener = http_server.ServerListen(
             args.bind_address,
             args.server_bind_port,
             cache_handler,
