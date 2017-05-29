@@ -20,7 +20,7 @@ and running:
 2) Download this repository on your machine (Posix machine only)
 3) On Windows, download and install Cygwin
 4) Download and install any modern browser
-5) Set up your browser to use proxy, according to the ip where the program will run and the port you'll choose (on Firefox, use "Foxyproxy")
+5) Set up your browser to use proxy, according to the ip where the program will run and the port you'll choose
 ```
 ### Execution
 
