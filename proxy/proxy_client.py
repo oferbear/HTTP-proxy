@@ -53,11 +53,11 @@ class ProxyClientSocket(pollable.Pollable):
         except socket.error as e:
             if e.errno != errno.EINPROGRESS:
                 self._state = CLOSING_STATE
-                self._peer._closing
 
         self._to_send = ''
         self._received = ''
         self._status_line = ''
+        self._test = ''
         self._headers = {}
         self._application_context = application_context
 
@@ -116,7 +116,6 @@ class ProxyClientSocket(pollable.Pollable):
             line = self.check_if_line()
         except RuntimeError:
             self._state = CLOSING_STATE
-            self._peer._closing = True
             return True
 
         if line:
@@ -129,7 +128,6 @@ class ProxyClientSocket(pollable.Pollable):
                     '',
                 )
                 self._state = CLOSING_STATE
-                self._peer._closing = True
                 return True
             to_send = (
                 '%s %s %s\r\n' % (
@@ -139,6 +137,7 @@ class ProxyClientSocket(pollable.Pollable):
                 )
             ).encode('utf-8')
             self._peer._to_send = to_send
+            self._test = to_send
             self._status_line = to_send
             return True
         self.check_if_maxsize()
@@ -153,7 +152,7 @@ class ProxyClientSocket(pollable.Pollable):
         line = ' '
         if constants.CRLF not in self._received:
             self.add_buf()
-        while line:
+        while line and self._received[:2] != constants.CRLF:
             line = self.check_if_line()
             if line:
                 self._headers = util.update_headers(
@@ -172,7 +171,8 @@ class ProxyClientSocket(pollable.Pollable):
                 self._peer._request_context,
                 self._status_line,
             )
-        if self._received == '\r\n' or line == '':
+        if self._received[:2] == '\r\n':  # or line == '':
+            self._received = self._received[2:]
             for key in self._headers:
                 to_send = (
                     '%s: %s\r\n' % (
@@ -181,6 +181,7 @@ class ProxyClientSocket(pollable.Pollable):
                     )
                 ).encode('utf-8')
                 self._peer._to_send += to_send
+                self._test += to_send
                 self._peer._cache.add_cache(
                     self._peer._request_context,
                     to_send,
@@ -201,12 +202,12 @@ class ProxyClientSocket(pollable.Pollable):
     #
     def content_state(self, args, poll):
         finished = False
-        if 'Content-Length' in self._headers:
-            leng = int(self._headers['Content-Length'])
-            self._headers['Content-Length'] = leng
-
-        if len(self._peer._to_send) > constants.TO_SEND_MAXSIZE:
-            return False
+        self._headers['Content-Length'] = int(
+            self._headers.get('Content-Length', 0)
+        )
+        is_content = self._headers['Content-Length'] == 0
+        # if len(self._peer._to_send) > constants.TO_SEND_MAXSIZE:
+        #    return False
         t = ''
         try:
             t = self._socket.recv(constants.BLOCK_SIZE)
@@ -218,23 +219,25 @@ class ProxyClientSocket(pollable.Pollable):
                     e,
                 )
                 self._state = CLOSING_STATE
+                finished = True
 
-        if not t:
+        if not t and is_content:
             finished = True
 
         self._received += t
         self._peer._to_send += self._received
+        self._test += self._received
         self._peer._cache.add_cache(
             self._peer._request_context,
             self._received,
         )
-        if 'Content-Length' in self._headers:
-            self._headers['Content-Length'] = leng - len(self._received)
+        if self._headers['Content-Length'] != 0:
+            self._headers['Content-Length'] -= len(self._received)
         self._received = ''
 
-        if 'Content-Length' in self._headers:
-            if self._headers['Content-Length'] == 0:
-                finished = True
+        if self._headers['Content-Length'] == 0 and not is_content:
+            finished = True
+
         if finished:
             if (
                 self._peer._request_context['uri'] in
@@ -327,6 +330,10 @@ class ProxyClientSocket(pollable.Pollable):
             self._state <= CLOSING_STATE
         ):
             events |= select.POLLIN
+            if self._peer:
+                if len(self._peer._to_send) > constants.TO_SEND_MAXSIZE:
+                    events = select.POLLERR
+
         if self._to_send:
             events |= select.POLLOUT
         return events

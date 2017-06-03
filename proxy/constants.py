@@ -29,7 +29,7 @@ MIME_MAPPING = {
     'txt': 'text/plain',
 }
 ## To-send buffer max length.
-TO_SEND_MAXSIZE = 4096
+TO_SEND_MAXSIZE = 16384
 ## Max request length.
 MAX_REQ_SIZE = 1000
 ## Path for cache to be stored.

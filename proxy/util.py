@@ -47,7 +47,7 @@ def update_headers(line, headers):
 
 
 ## Checks if response status line is valid, and parse it.
-# @param res (str) status line 
+# @param res (str) status line
 # @returns http signatue (str)
 # @returns status code (str)
 # @returns status (str)
@@ -64,10 +64,10 @@ def check_response(res):
 
 
 ## Checks if request first line is valid, and parse it.
-# @param req (str) first line 
-# @returns (str) method 
-# @returns (str) uri 
-# @returns (str) http signature 
+# @param req (str) first line
+# @returns (str) method
+# @returns (str) uri
+# @returns (str) http signature
 #
 def check_request(req):
     req_comps = req.split(' ', 2)
@@ -77,7 +77,7 @@ def check_request(req):
         raise RuntimeError('Incomplete HTTP protocol')
 
     method, uri, signature = req_comps
-    if method not in ('GET', 'CONNECT'):
+    if method not in ('GET', 'CONNECT', 'POST'):
         raise RuntimeError(
             "HTTP unsupported method '%s'" % method
         )
@@ -87,7 +87,7 @@ def check_request(req):
 
 
 ## Finds line in text.
-# @param buf (str) text 
+# @param buf (str) text
 # @returns line, rest of text (tuple)
 #
 def read_line(buf):

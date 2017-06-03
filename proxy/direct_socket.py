@@ -25,7 +25,7 @@ class DirectSocketUp(pollable.Pollable):
     # @param address to connect to (str)
     # @param port (int)
     # @param poll object (poll).
-    # @param http_socket (ProxySocket) ProxySocket object 
+    # @param http_socket (ProxySocket) ProxySocket object
     # @param application_context (dict)
     # @param logger (logging.Logger)
     #
@@ -92,8 +92,7 @@ class DirectSocketUp(pollable.Pollable):
     #
     def on_read(self, poll, args):
         try:
-            if len(self._peer._to_send) <= constants.TO_SEND_MAXSIZE:
-                self.add_buf()
+            self.add_buf()
 
         except RuntimeError:
             self.close_socket()
@@ -136,7 +135,9 @@ class DirectSocketUp(pollable.Pollable):
     # @returns (int) poll events.
     #
     def get_events(self):
-        events = select.POLLERR | select.POLLIN
+        events = select.POLLERR
+        if len(self._peer._to_send) < constants.TO_SEND_MAXSIZE:
+            events |= select.POLLIN
         if (
             self._to_send and
             len(self._peer._to_send) < constants.TO_SEND_MAXSIZE
@@ -211,7 +212,7 @@ class DirectSocketDown(pollable.Pollable):
     ## Constructor.
     # @param address to connect to (str)
     # @param port (int)
-    # @param peer (ProxySocket) ProxySocket object. 
+    # @param peer (ProxySocket) ProxySocket object.
     # @param application_context (dict)
     # @param logger (logging.Logger)
     #
@@ -285,8 +286,7 @@ class DirectSocketDown(pollable.Pollable):
     #
     def on_read(self, poll, args):
         try:
-            if len(self._peer._to_send) <= constants.TO_SEND_MAXSIZE:
-                self.add_buf()
+            self.add_buf()
 
         except RuntimeError:
             self.close_socket()
@@ -330,7 +330,9 @@ class DirectSocketDown(pollable.Pollable):
     # @returns (int) poll events.
     #
     def get_events(self):
-        events = select.POLLERR | select.POLLIN
+        events = select.POLLERR
+        if len(self._peer._to_send) < constants.TO_SEND_MAXSIZE:
+            events |= select.POLLIN
         if (
             self._to_send and
             len(self._peer._to_send) < constants.TO_SEND_MAXSIZE

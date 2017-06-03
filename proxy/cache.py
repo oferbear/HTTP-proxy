@@ -91,6 +91,8 @@ class Cache():
     # @returns (bool) whether file should be cached or not.
     #
     def check_if_cache(self, request_context):
+        if request_context['method'] == 'CONNECT':
+            return False
         try:
             try:
                 os.mkdir('%s/cache' % os.getcwd())

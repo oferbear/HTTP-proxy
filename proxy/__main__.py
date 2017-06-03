@@ -119,6 +119,7 @@ def main():
         'statistics': {
             'throughput': [0, time.time()],
         },
+        'connections': 0,
     }
     args = parse_args()
     logger = setup_logging(

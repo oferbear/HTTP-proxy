@@ -250,35 +250,46 @@ class ProxySocket(pollable.Pollable):
     # @returns (boll) if ready to move to next state.
     #
     def content_state(self, args, poll):
-        if self.request_context['headers']['Content-Length'] is not '0':
-            leng = int(self._request_context['headers']['Content-Length'])
-            self._request_context['headers']['Content-Length'] = leng
-            try:
-                t = self._socket.recv(constants.BLOCK_SIZE)
-                if not t:
-                    raise RuntimeError('Disconnect')
-                self._received += t
-                if self._request_context['headers']['Content-Length'] == 0:
-                    self._peer._to_send += self._request_context['content']
-                    return True
+        finished = False
+        self._request_context['headers']['Content-Length'] = int(
+            self._request_context['headers'].get('Content-Length', 0)
+        )
 
-            except socket.error as e:
-                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
-                    self._logger.error(
-                        'ProxySocket %s socket error: %s',
-                        self._socket.fileno(),
-                        e,
-                    )
-                    raise
+        t = ''
+        try:
+            t = self._socket.recv(constants.BLOCK_SIZE)
+        except socket.error as e:
+            if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                self._logger.error(
+                    'ProxySocket %s socket error: %s',
+                    self._socket.fileno(),
+                    e,
+                )
+                self._state = CLOSING_STATE
+                finished = True
 
-            return False
-        return True
+        if not t:
+            finished = True
+
+        self._received += t
+        self._peer._to_send += self._received
+        self._request_context['headers']['Content-Length'] -= (
+            len(self._received)
+        )
+        self._received = ''
+
+        if self._request_context['headers']['Content-Length'] == 0:
+            finished = True
+        if finished:
+            return True
+
+        return False
 
     ## Final state. Finished receiving. Ready to close socket.
     # @returns (boll) if ready to move to next state.
     #
     def closing_state(self):
-        if not self._to_send:
+        if not self._to_send and self._closing:
             self.close_socket()
         return True
 
@@ -377,6 +388,9 @@ class ProxySocket(pollable.Pollable):
             self._state <= CONTENT_STATE
         ):
             events |= select.POLLIN
+            if self._peer:
+                if len(self._peer._to_send) > constants.TO_SEND_MAXSIZE:
+                    events = select.POLLERR
 
         if (
             self._to_send or self._closing
@@ -452,6 +466,7 @@ class ProxySocket(pollable.Pollable):
             'ProxySocket socket %s is closing' %
             self._socket.fileno()
         )
+        self._request_context['application_context']['connections'] -= 1
         self._socket.close()
 
 
@@ -516,6 +531,7 @@ class ProxyListen(pollable.Pollable):
             fcntl.F_SETFL,
             fcntl.fcntl(s1.fileno(), fcntl.F_GETFL) | os.O_NONBLOCK,
         )
+        self._application_context['connections'] += 1
         http_obj = ProxySocket(
             s1,
             REQUEST_STATE,
@@ -550,7 +566,10 @@ class ProxyListen(pollable.Pollable):
     # @returns (int) poll events.
     #
     def get_events(self):
+        # if self._application_context['connections'] < 1:
         return select.POLLIN | select.POLLERR
+        # else:
+        #    return select.POLLERR
 
     ## Returns sockets file discriptor.
     # @returns (str) sockets file discriptor.
